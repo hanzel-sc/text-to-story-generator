@@ -35,7 +35,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
-// Updated API Service class (matching the corrected version)
+// Fixed API Service class
 class StoryAPI {
   constructor() {
     this.baseURL = 'https://34606e239500.ngrok-free.app';
@@ -106,22 +106,45 @@ class StoryAPI {
     };
 
     try {
-      const response = await this.makeRequest('/api/stories/generate', {
+      const backendResponse = await this.makeRequest('/api/stories/generate', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
 
-      return {
-        response: response
-        };
+      // Backend returns the story data directly - need to format it properly
+      const scenes = this.formatScenesFromBackend(backendResponse, parameters.numScenes || 5);
+      
+      const story = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: this.generateTitleFromPrompt(storyPrompt),
+        scenes: scenes,
+        metadata: {
+          genre: parameters.genre || 'fantasy',
+          tone: parameters.tone || 'lighthearted',
+          targetAudience: parameters.targetAudience || 'kids',
+          artStyle: parameters.artStyle || 'anime',
+          language: parameters.language || 'en',
+          createdAt: new Date().toISOString()
+        }
+      };
+
+      return { story };
     } catch (error) {
       throw new Error(`Story generation failed: ${error.message}`);
     }
   }
 
+  // Helper function to generate a title from the prompt
+  generateTitleFromPrompt(prompt) {
+    // Simple title generation - take first few words and capitalize
+    const words = prompt.split(' ').slice(0, 4);
+    return words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+  }
+
   formatScenesFromBackend(response, numScenes = 5) {
     const scenes = [];
     
+    // Backend returns scene_1, scene_2, etc.
     for (let i = 1; i <= numScenes; i++) {
       const sceneKey = `scene_${i}`;
       const sceneText = response[sceneKey];
@@ -134,21 +157,62 @@ class StoryAPI {
           imageUrl: null,
           audioUrl: null,
           sceneNumber: i,
-          imagePrompt: `Scene ${i} illustration`
+          imagePrompt: `Scene ${i} illustration: ${sceneText.slice(0, 100)}...`
         });
       }
     }
     
-    if (scenes.length === 0 && response.scenes) {
-      return response.scenes.map((scene, index) => ({
-        id: index + 1,
-        title: scene.title || `Scene ${index + 1}`,
-        text: scene.text || scene,
+    // If no scenes found in expected format, try to extract from other possible formats
+    if (scenes.length === 0) {
+      // If response has scenes array
+      if (response.scenes && Array.isArray(response.scenes)) {
+        return response.scenes.map((scene, index) => ({
+          id: index + 1,
+          title: scene.title || `Scene ${index + 1}`,
+          text: scene.text || scene,
+          imageUrl: null,
+          audioUrl: null,
+          sceneNumber: index + 1,
+          imagePrompt: `Scene ${index + 1} illustration`
+        }));
+      }
+      
+      // If response is a single story text, split it into scenes
+      if (typeof response === 'string') {
+        const paragraphs = response.split('\n\n').filter(p => p.trim());
+        const scenesPerParagraph = Math.ceil(paragraphs.length / numScenes);
+        
+        for (let i = 0; i < numScenes; i++) {
+          const startIdx = i * scenesPerParagraph;
+          const endIdx = Math.min(startIdx + scenesPerParagraph, paragraphs.length);
+          const sceneText = paragraphs.slice(startIdx, endIdx).join('\n\n');
+          
+          if (sceneText.trim()) {
+            scenes.push({
+              id: i + 1,
+              title: `Scene ${i + 1}`,
+              text: sceneText,
+              imageUrl: null,
+              audioUrl: null,
+              sceneNumber: i + 1,
+              imagePrompt: `Scene ${i + 1} illustration`
+            });
+          }
+        }
+      }
+    }
+    
+    // Ensure we have at least one scene
+    if (scenes.length === 0) {
+      scenes.push({
+        id: 1,
+        title: 'Scene 1',
+        text: 'Story generation encountered an issue. Please try again.',
         imageUrl: null,
         audioUrl: null,
-        sceneNumber: index + 1,
-        imagePrompt: scene.imagePrompt || `Scene ${index + 1} illustration`
-      }));
+        sceneNumber: 1,
+        imagePrompt: 'Story scene illustration'
+      });
     }
     
     return scenes;
@@ -168,11 +232,14 @@ class StoryAPI {
 
       const refinedContent = response.refined_story;
       
+      // Update the story with refined content
       const refinedStory = {
         ...story,
-        scenes: story.scenes.map(scene => ({
+        scenes: story.scenes.map((scene, index) => ({
           ...scene,
-          text: `${scene.text}\n\n[Refined: ${refinedContent.slice(0, 100)}...]`
+          text: index === 0 
+            ? `${refinedContent.slice(0, 300)}...` // Use refined content for first scene
+            : scene.text // Keep original text for other scenes
         }))
       };
 
@@ -194,14 +261,15 @@ class StoryAPI {
         body: JSON.stringify(payload)
       });
 
+      // Backend returns formatted_scenes with PIL (base64) and Text
       const updatedScenes = story.scenes.map((scene, index) => {
         const sceneKey = `scene_${index + 1}`;
         const backendScene = response[sceneKey];
         
-        if (backendScene && backendScene.PIL) {
+        if (backendScene) {
           return {
             ...scene,
-            imageUrl: `data:image/png;base64,${backendScene.PIL}`,
+            imageUrl: backendScene.PIL ? `data:image/png;base64,${backendScene.PIL}` : null,
             text: backendScene.Text || scene.text
           };
         }
@@ -317,7 +385,7 @@ const StorySettings = ({ settings, onSettingsChange, onGenerate, isGenerating, o
   const genres = ['fantasy', 'sci-fi', 'mystery', 'comedy', 'adventure', 'romance', 'horror', 'drama'];
   const tones = ['lighthearted', 'epic', 'dark', 'humorous', 'mysterious', 'romantic', 'dramatic'];
   const audiences = ['kids', 'teens', 'adults', 'general'];
-  const artStyles = api.getAvailableArtStyles(); // Use backend art styles
+  const artStyles = api.getAvailableArtStyles();
   const languages = [
     { code: 'en', name: 'English' },
     { code: 'es', name: 'Spanish' },
@@ -1131,7 +1199,6 @@ const HomeView = ({ onStartCreating }) => (
       </div>
     </div>
 
-    {/* Features Section */}
     <div className="py-20 border-t border-zinc-800/50">
       <div className="max-w-6xl mx-auto px-6">
         <div className="text-center mb-16">
@@ -1272,7 +1339,7 @@ const App = () => {
     genre: 'fantasy',
     tone: 'lighthearted',
     targetAudience: 'kids',
-    artStyle: 'anime', // Default to anime which is supported by backend
+    artStyle: 'anime',
     language: 'en',
     numScenes: 5
   });
@@ -1285,7 +1352,9 @@ const App = () => {
       try {
         await api.checkHealth();
         console.log('Backend connection successful');
+        addToast('Connected to backend successfully', 'success');
       } catch (error) {
+        console.error('Backend health check failed:', error);
         addToast('Backend server is not responding. Please start the server.', 'error');
       }
     };
@@ -1308,11 +1377,16 @@ const App = () => {
 
     setIsGenerating(true);
     try {
+      console.log('Generating story with settings:', settings);
       const result = await api.generateStory(settings.storyIdea, settings);
+      console.log('Story generation result:', result);
+      
       if (result.story) {
         setPreviewStory(result.story);
         setCurrentView('preview');
         addToast('Story preview generated successfully!', 'success');
+      } else {
+        throw new Error('No story data received from backend');
       }
     } catch (error) {
       addToast(`Story generation failed: ${error.message}`, 'error');
@@ -1327,10 +1401,14 @@ const App = () => {
     
     setIsRefining(true);
     try {
+      console.log('Refining story with prompt:', refinementPrompt);
       const result = await api.refineStory(refinementPrompt, previewStory);
+      
       if (result.refinedStory) {
         setPreviewStory(result.refinedStory);
         addToast('Story refined successfully!', 'success');
+      } else {
+        throw new Error('No refined story data received');
       }
     } catch (error) {
       addToast(`Failed to refine story: ${error.message}`, 'error');
@@ -1345,11 +1423,15 @@ const App = () => {
     setGenerationTaskId(Math.random().toString(36).substr(2, 9));
     
     try {
+      console.log('Generating full story with images:', storyData);
       const result = await api.generateFullStory(storyData, settings);
+      
       if (result.story) {
         setStory(result.story);
         setCurrentView('story');
         addToast('Story with images generated successfully!', 'success');
+      } else {
+        throw new Error('No story data received from image generation');
       }
     } catch (error) {
       addToast(`Image generation failed: ${error.message}`, 'error');
