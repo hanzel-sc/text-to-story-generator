@@ -1,7 +1,7 @@
 // Fixed API Service to match FastAPI backend
 class StoryAPI {
   constructor() {
-    this.baseURL = 'https://34606e239500.ngrok-free.app/';
+    this.baseURL = 'https://34606e239500.ngrok-free.app';
     this.timeout = 120000; // 2 minutes for image generation
   }
 

@@ -38,7 +38,7 @@ import {
 // Updated API Service class (matching the corrected version)
 class StoryAPI {
   constructor() {
-    this.baseURL = 'https://34606e239500.ngrok-free.app/';
+    this.baseURL = 'https://34606e239500.ngrok-free.app';
     this.timeout = 120000;
   }
 
