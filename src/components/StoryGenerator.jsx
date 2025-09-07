@@ -22,7 +22,7 @@ import {
   Zap,
   ArrowLeft
 } from 'lucide-react';
-import StoryAPI from './frontend-logic.js'; // Import the API from the JS file
+import StoryAPI from '../api/StoryAPI.js'; // Import the API from the JS file
 
 // Toast notification system
 const useToast = () => {
