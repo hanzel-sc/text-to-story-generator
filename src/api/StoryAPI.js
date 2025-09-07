@@ -78,22 +78,7 @@ class StoryAPI {
 
       // Backend returns the story object directly
       return {
-        taskId: Math.random().toString(36).substr(2, 9), // Generate client-side ID
-        status: 'completed',
-        story: {
-          id: Math.random().toString(36).substr(2, 9),
-          title: response.title || "Generated Story",
-          metadata: {
-            genre: parameters.genre || 'fantasy',
-            tone: parameters.tone || 'lighthearted',
-            artStyle: parameters.artStyle || 'anime',
-            targetAudience: parameters.targetAudience || 'kids',
-            language: parameters.language || 'en',
-            createdAt: new Date().toISOString(),
-            totalScenes: response.scenes ? response.scenes.length : parameters.numScenes || 5
-          },
-          scenes: this.formatScenesFromBackend(response, parameters.numScenes || 5)
-        }
+        response: response
       };
     } catch (error) {
       throw new Error(`Story generation failed: ${error.message}`);
